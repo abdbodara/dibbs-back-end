@@ -5,8 +5,11 @@ require("dotenv").config();
 const cors = require("cors");
 
 const { testConnection } = require("./src/db/config");
+
 var corsOptions = {
   origin: "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 200,
 };
 const app = express();

@@ -47,6 +47,12 @@ router.patch(
   authMiddleware("admin"),
   updateProductStatus
 );
+// router.put(
+//   "/products/status/:productId",
+//   authMiddleware("admin"),
+//   updateProductStatus
+// );
+
 router.get("/user/:userId", authMiddleware("owner"), getDealsByUserId);
 
 router.patch(

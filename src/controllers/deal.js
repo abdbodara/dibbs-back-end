@@ -16,7 +16,18 @@ const getDealsList = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      "SELECT * FROM products WHERE status IN (?, ?, ?, ?) ORDER BY added_on DESC LIMIT ? OFFSET ?",
+      `SELECT p.*, s.store_name,IFNULL(pv.variation_count, 0) as products_variations
+       FROM products p
+        LEFT JOIN (
+           SELECT product_id, COUNT(*) as variation_count
+           FROM products_variations
+          WHERE status = 'active' -- Filter for active variations only
+           GROUP BY product_id
+       ) pv ON p.product_id = pv.product_id
+       LEFT JOIN stores s ON p.store_id = s.store_id
+       WHERE p.status IN (?, ?, ?, ?) 
+       ORDER BY p.added_on DESC 
+       LIMIT ? OFFSET ?`,
       ["active", "inactive", "rejected", "pending", limit, offset]
     );
 
