@@ -43,11 +43,33 @@ const addCategory = async (req, res) => {
 
 const getCategoriesList = async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM categories");
-    if (rows.length === 0) {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    const [[{ totalRecords }]] = await db.query(
+      "SELECT COUNT(*) as totalRecords FROM categories WHERE status = 'active'"
+    );
+
+    if (totalRecords === 0) {
       return res.status(404).json({ error: "No active categories found." });
     }
-    res.status(200).json(rows);
+    const [rows] = await db.query(
+      "SELECT * FROM categories WHERE status = 'active' ORDER BY added_on DESC LIMIT ? OFFSET ?",
+      [limit, offset]
+    );
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.status(200).json({
+      data: rows,
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+      },
+    });
   } catch (error) {
     console.error("Error fetching categories:", error);
 
