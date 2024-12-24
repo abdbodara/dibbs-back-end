@@ -47,17 +47,40 @@ const createFaq = async (req, res) => {
 
 const getFaqsList = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT * FROM faqs WHERE status IN ('active', 'inactive')"
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    const [[{ totalRecords }]] = await db.query(
+      "SELECT COUNT(*) as totalRecords FROM faqs WHERE status IN (?, ?)",
+      ["active", "inactive"]
     );
 
-    if (rows.length === 0) {
+    if (totalRecords === 0) {
       return res
         .status(404)
         .json({ error: "No FAQs found with the given status." });
     }
 
-    res.status(200).json(rows);
+    const [rows] = await db.query(
+      `SELECT * FROM faqs 
+       WHERE status IN (?, ?) 
+       ORDER BY added_by DESC 
+       LIMIT ? OFFSET ?`,
+      ["active", "inactive", limit, offset]
+    );
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.status(200).json({
+      data: rows,
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+      },
+    });
   } catch (error) {
     console.error("Error fetching FAQs:", error);
 

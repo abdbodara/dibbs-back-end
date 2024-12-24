@@ -16,6 +16,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(express.json({ extended: true }));
 app.use(cors(corsOptions));
+app.use("/uploads", express.static("uploads"));
 
 const storeRoutes = require("./src/routes/store");
 const customerRoutes = require("./src/routes/customer");
@@ -24,6 +25,9 @@ const orderRoutes = require("./src/routes/order");
 const categoriesRoutes = require("./src/routes/categories");
 const dealRoutes = require("./src/routes/deal");
 const dashboardRoutes = require("./src/routes/dashboard");
+const faqsRoutes = require("./src/routes/faqs");
+const pushNotificationRoutes = require("./src/routes/pushAlert");
+const supportQueriesRoute = require("./src/routes/support");
 
 app.use("/api/store", storeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -32,6 +36,9 @@ app.use("/api/order", orderRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/deal", dealRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/faqs", faqsRoutes);
+app.use("/api/pushNotification", pushNotificationRoutes);
+app.use("/api/support", supportQueriesRoute);
 
 const PORT = process.env.PORT || 5000;
 

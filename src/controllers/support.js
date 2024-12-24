@@ -2,13 +2,58 @@ const { db } = require("../db/config");
 
 const getSupportList = async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM customers_support");
-    if (rows.length === 0) {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    const [[{ totalRecords }]] = await db.query(
+      "SELECT COUNT(*) as totalRecords FROM customers_support"
+    );
+
+    if (totalRecords === 0) {
       return res
         .status(404)
         .json({ error: "No active customer support queries found." });
     }
-    res.status(200).json(rows);
+    const [supportQueries] = await db.query(
+      `SELECT 
+        cs.*, 
+        c.first_name, 
+        c.last_name 
+      FROM 
+        customers_support cs
+      LEFT JOIN 
+        customers c
+      ON 
+        cs.customer_id = c.customer_id 
+      ORDER BY 
+        cs.auto_id DESC
+      LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    if (!supportQueries.length) {
+      return res.status(404).json({
+        error: "No customer support queries found for the selected page.",
+      });
+    }
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.status(200).json({
+      data: supportQueries.map((query) => ({
+        ...query,
+        customer_name: `${query.first_name || ""} ${
+          query.last_name || ""
+        }`.trim(),
+      })),
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+      },
+    });
   } catch (error) {
     console.error("Error fetching customer support queries:", error);
     res.status(500).json({
