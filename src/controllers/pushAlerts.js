@@ -82,6 +82,5 @@ const deletePushNotification = async (req, res) => {
 
 module.exports = {
   getPushNotificationList,
-  createPushNotification,
   deletePushNotification,
 };
