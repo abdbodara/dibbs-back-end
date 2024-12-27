@@ -47,13 +47,36 @@ const createCoupon = async (req, res) => {
 
 const getCouponList = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT * FROM discount_coupens WHERE status = 'active'"
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const [[{ totalRecords }]] = await db.query(
+      "SELECT COUNT(*) as totalRecords FROM discount_coupens WHERE status = 'active'"
     );
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "No active categories found." });
+    if (totalRecords === 0) {
+      return res.status(404).json({ error: "No active coupons found." });
     }
-    res.status(200).json(rows);
+    const [coupons] = await db.query(
+      `SELECT * FROM discount_coupens WHERE status = 'active' LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    if (!coupons.length) {
+      return res.status(404).json({
+        error: "No coupons found for the selected page.",
+      });
+    }
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.status(200).json({
+      data: coupons,
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+      },
+    });
   } catch (error) {
     console.error("Error fetching categories:", error);
 

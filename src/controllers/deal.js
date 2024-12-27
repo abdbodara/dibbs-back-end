@@ -5,10 +5,24 @@ const getDealsList = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const offset = (page - 1) * limit;
+    const searchQuery = req.query.searchTerm || "";
 
     const [[{ totalRecords }]] = await db.query(
-      "SELECT COUNT(*) as totalRecords FROM products WHERE status IN (?, ?, ?, ?)",
-      ["active", "inactive", "rejected", "pending"]
+      "SELECT COUNT(*) as totalRecords " +
+        "FROM products p " +
+        "LEFT JOIN stores s ON p.store_id = s.store_id " +
+        "WHERE p.status IN (?, ?, ?, ?) AND " +
+        "(p.product_id LIKE ? OR p.product_name LIKE ? OR s.store_name LIKE ? OR p.description LIKE ?)",
+      [
+        "active",
+        "inactive",
+        "rejected",
+        "pending",
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+      ]
     );
 
     if (totalRecords === 0) {
@@ -16,19 +30,32 @@ const getDealsList = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      `SELECT p.*, s.store_name,IFNULL(pv.variation_count, 0) as products_variations
+      `SELECT p.*, s.store_name, 
+              IFNULL(pv.variation_count, 0) as products_variations 
        FROM products p
-        LEFT JOIN (
+       LEFT JOIN (
            SELECT product_id, COUNT(*) as variation_count
            FROM products_variations
-          WHERE status = 'active' -- Filter for active variations only
+           WHERE status = 'active'
            GROUP BY product_id
        ) pv ON p.product_id = pv.product_id
        LEFT JOIN stores s ON p.store_id = s.store_id
-       WHERE p.status IN (?, ?, ?, ?) 
+       WHERE p.status IN (?, ?, ?, ?) AND 
+       (p.product_id LIKE ? OR p.product_name LIKE ? OR s.store_name LIKE ? OR p.description LIKE ?)
        ORDER BY p.added_on DESC 
        LIMIT ? OFFSET ?`,
-      ["active", "inactive", "rejected", "pending", limit, offset]
+      [
+        "active",
+        "inactive",
+        "rejected",
+        "pending",
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
     );
 
     const totalPages = Math.ceil(totalRecords / limit);
@@ -55,7 +82,7 @@ const getDealsList = async (req, res) => {
 const updateProductStatus = async (req, res) => {
   const { productId } = req.params;
   const { status } = req.body;
-
+  console.log(productId, status, "wertyuio");
   try {
     const [productRows] = await db.query(
       "SELECT * FROM products WHERE product_id = ? AND status = ?",
@@ -160,10 +187,22 @@ const getPendingDeals = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const offset = (page - 1) * limit;
+    const searchQuery = req.query.searchTerm || "";
 
+    // Fetch total record count with search filtering
     const [[{ totalRecords }]] = await db.query(
-      "SELECT COUNT(*) as totalRecords FROM products WHERE status = ?",
-      ["pending"]
+      "SELECT COUNT(*) as totalRecords " +
+        "FROM products p " +
+        "LEFT JOIN stores s ON p.store_id = s.store_id " +
+        "WHERE p.status = ? AND " +
+        "(p.product_id LIKE ? OR p.product_name LIKE ? OR s.store_name LIKE ? OR p.description LIKE ?)",
+      [
+        "pending",
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+      ]
     );
 
     if (totalRecords === 0) {
@@ -171,11 +210,34 @@ const getPendingDeals = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      "SELECT * FROM products WHERE status = ? ORDER BY added_on DESC LIMIT ? OFFSET ?",
-      ["pending", limit, offset]
+      `SELECT p.*, 
+              s.store_name, 
+              IFNULL(pv.variation_count, 0) as products_variations 
+       FROM products p
+       LEFT JOIN (
+           SELECT product_id, COUNT(*) as variation_count
+           FROM products_variations
+           WHERE status = 'active'
+           GROUP BY product_id
+       ) pv ON p.product_id = pv.product_id
+       LEFT JOIN stores s ON p.store_id = s.store_id
+       WHERE p.status = ? AND 
+       (p.product_id LIKE ? OR p.product_name LIKE ? OR s.store_name LIKE ? OR p.description LIKE ?)
+       ORDER BY p.added_on DESC 
+       LIMIT ? OFFSET ?`,
+      [
+        "pending",
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
     );
 
     const totalPages = Math.ceil(totalRecords / limit);
+
     res.status(200).json({
       data: rows,
       pagination: {
@@ -243,8 +305,6 @@ const editDeal = async (req, res) => {
     status,
   } = req.body;
 
-  console.log("req.files====>>", req.files);
-
   const files = req.files;
 
   const uploadedImages = [];
@@ -255,7 +315,6 @@ const editDeal = async (req, res) => {
     .slice(0, 19)
     .replace("T", " ");
   const updatedBy = req.user?.id;
-  console.log("🚀 ~ editDeal ~ updatedBy:", updatedBy);
   const variants = [];
   for (const key in req.body) {
     const match = key.match(/^variants\[(\d+)\](\w+)$/);
@@ -278,7 +337,7 @@ const editDeal = async (req, res) => {
     }
 
     if (variants && Array.isArray(variants)) {
-      for (const variant of variants) {
+      for (const [index, variant] of variants.entries()) {
         const {
           variantId,
           variant_name,
@@ -286,6 +345,7 @@ const editDeal = async (req, res) => {
           discount,
           productsTags,
         } = variant;
+
         if (variantId) {
           const [variantRows] = await db.query(
             "SELECT * FROM products_variations WHERE auto_id = ?",
@@ -306,30 +366,75 @@ const editDeal = async (req, res) => {
             return res.status(400).json({ error: "Variant is not active." });
           }
 
+          if (files) {
+            files.forEach((file) => {
+              const match = file.fieldname.match(
+                /^variants\[(\d+)\]variant_image$/
+              );
+              if (match) {
+                const extractedIndex = match[1];
+                console.log(
+                  "🚀 ~ extractedIndex:",
+                  extractedIndex,
+                  "Expected index:",
+                  index
+                );
+
+                if (extractedIndex == index) {
+                  if (!uploadedVariantImages[index]) {
+                    uploadedVariantImages[index] = [];
+                  }
+                  uploadedVariantImages[index].push(file.filename);
+                }
+              }
+              console.log(
+                "🚀 ~ files.forEach ~ uploadedVariantImages:",
+                uploadedVariantImages
+              );
+            });
+          }
+
           await db.query(
             `UPDATE products_variations SET
-          name = ?, 
-          price = ?, 
-          discount = ?, 
-          image = ?,
-          tags = ?,
-          updated_by = ?, 
-          updated_on = ?
-        WHERE auto_id = ?`,
+              name = ?, 
+              price = ?, 
+              discount = ?, 
+              image = ?,
+              tags = ?,
+              updated_by = ?, 
+              updated_on = ?
+            WHERE auto_id = ?`,
             [
               variant_name,
               product_price,
               discount,
-              uploadedVariantImages[0]?.filename || null,
+              uploadedVariantImages[index]?.[0] || null,
               productsTags,
               updatedBy,
               currentTimestamp,
               variantId,
             ]
           );
+        } else {
+          await db.query(
+            `INSERT INTO products_variations 
+            (product_id, name, price, discount, image, tags, added_by, added_on, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [
+              productId,
+              variant_name,
+              product_price,
+              discount,
+              uploadedVariantImages[index]?.[0] || null,
+              productsTags,
+              updatedBy,
+              currentTimestamp,
+            ]
+          );
         }
       }
     }
+
     await db.query(
       `UPDATE products SET
           product_name = ?, 

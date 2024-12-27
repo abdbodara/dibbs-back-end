@@ -5,9 +5,19 @@ const getOrders = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const offset = (page - 1) * limit;
+    const searchQuery = req.query.searchTerm || "";
 
     const [[{ totalRecords }]] = await db.query(
-      "SELECT COUNT(*) as totalRecords FROM orders"
+      "SELECT COUNT(*) as totalRecords FROM orders " +
+        "JOIN customers ON orders.customer_id = customers.customer_id " +
+        "JOIN stores ON orders.store_id = stores.store_id " +
+        "WHERE orders.order_id LIKE ? OR customers.first_name LIKE ? OR customers.last_name LIKE ? OR stores.store_name LIKE ?",
+      [
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+      ]
     );
 
     if (totalRecords === 0) {
@@ -15,8 +25,20 @@ const getOrders = async (req, res) => {
     }
 
     const [orders] = await db.query(
-      `SELECT * FROM orders ORDER BY added_on DESC LIMIT ? OFFSET ?`,
-      [limit, offset]
+      `SELECT orders.*, customers.first_name, customers.last_name, stores.store_name
+       FROM orders
+       JOIN customers ON orders.customer_id = customers.customer_id
+       JOIN stores ON orders.store_id = stores.store_id
+       WHERE orders.order_id LIKE ? OR customers.first_name LIKE ? OR customers.last_name LIKE ? OR stores.store_name LIKE ?
+       ORDER BY orders.added_on DESC LIMIT ? OFFSET ?`,
+      [
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
     );
 
     if (!orders.length) {
@@ -41,7 +63,6 @@ const getOrders = async (req, res) => {
         return order;
       })
     );
-
     const totalPages = Math.ceil(totalRecords / limit);
 
     res.status(200).json({

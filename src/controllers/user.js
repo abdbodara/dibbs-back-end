@@ -115,10 +115,10 @@ const forgotPassword = async (req, res) => {
       "SELECT user_id, email, user_name FROM users WHERE email = ? AND status = ?",
       [email, "active"]
     );
-
     if (rows.length === 0) {
-      retData.message = "Email not found or user is inactive.";
-      return res.status(404).json(retData);
+      return res
+        .status(404)
+        .json({ message: "Email not found or user is inactive." });
     }
 
     const user = rows[0];
@@ -155,6 +155,10 @@ const resetPassword = async (req, res) => {
   const { password } = req.body;
   const { token } = req.query;
 
+  if (!password) {
+    return res.status(400).json({ message: "Password is required." });
+  }
+
   try {
     const decodedEmail = Buffer.from(token, "base64").toString("utf-8");
 
@@ -166,7 +170,7 @@ const resetPassword = async (req, res) => {
     if (rows.length === 0) {
       return res
         .status(400)
-        .json({ error: "User not found or account is inactive" });
+        .json({ message: "User not found or account is inactive" });
     }
 
     const user = rows[0];
@@ -176,12 +180,12 @@ const resetPassword = async (req, res) => {
       decodedEmail,
     ]);
 
-    res.status(200).json({ success: "Password successfully updated" });
+    res.status(200).json({ messege: "Password successfully updated" });
   } catch (error) {
     console.error(error);
     res
       .status(500)
-      .json({ error: "Something went wrong. Please try again later." });
+      .json({ message: "Something went wrong. Please try again later." });
   }
 };
 
