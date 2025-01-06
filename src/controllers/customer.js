@@ -2,23 +2,38 @@ const { db } = require("../db/config");
 
 const getCustomersList = async (req, res) => {
   try {
-
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const offset = (page - 1) * limit;
+    const searchQuery = req.query.searchTerm || "";
 
     const [[{ totalRecords }]] = await db.query(
-      "SELECT COUNT(*) as totalRecords FROM customers"
+      `SELECT COUNT(*) as totalRecords 
+       FROM customers 
+       WHERE customer_id LIKE ? OR first_name LIKE ? OR last_name LIKE ?`,
+      [`%${searchQuery}%`, `%${searchQuery}%`, `%${searchQuery}%`]
     );
 
     if (totalRecords === 0) {
       return res.status(404).json({ error: "No customers found." });
     }
 
-    const [rows] = await db.query("SELECT * FROM customers ORDER BY added_on DESC LIMIT ? OFFSET ?", [limit, offset]);
+    const [rows] = await db.query(
+      `SELECT * 
+       FROM customers 
+       WHERE customer_id LIKE ? OR first_name LIKE ? OR last_name LIKE ? 
+       ORDER BY added_on DESC 
+       LIMIT ? OFFSET ?`,
+      [
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
+    );
 
     const totalPages = Math.ceil(totalRecords / limit);
-
 
     res.status(200).json({
       data: rows,
@@ -38,6 +53,7 @@ const getCustomersList = async (req, res) => {
     });
   }
 };
+
 const updateCustomerStatus = async (req, res) => {
   const { customer_id } = req.params;
   const { status } = req.body;

@@ -16,13 +16,17 @@ router.post(
   upload.single("image"),
   addCategory
 );
-router.get("/", authMiddleware("admin"), getCategoriesList);
+router.get("/", authMiddleware(["admin", "owner"]), getCategoriesList);
 router.patch(
   "/updateCategory/:auto_id",
   authMiddleware("admin"),
   upload.single("image"),
   updateCategory
 );
-router.delete("/deleteCategory/:auto_id", authMiddleware("admin"), deleteCategory);
+router.delete(
+  "/deleteCategory/:auto_id",
+  authMiddleware("admin"),
+  deleteCategory
+);
 
 module.exports = router;

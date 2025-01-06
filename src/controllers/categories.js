@@ -83,7 +83,6 @@ const getCategoriesList = async (req, res) => {
 const updateCategory = async (req, res) => {
   try {
     const { auto_id } = req.params;
-    console.log("🚀 ~ updateCategory ~ autoId:", auto_id);
     const { name, description } = req.body;
     const image = req.file ? req.file.path : null;
     const updatedBy = "1";
@@ -173,7 +172,6 @@ const deleteCategory = async (req, res) => {
   } catch (error) {
     console.error("Error deleting category:", error);
     res.status(500).json({
-      error: "An error occurred while deleting the category.",
       details: error.message,
     });
   }

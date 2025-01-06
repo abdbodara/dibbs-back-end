@@ -5,18 +5,48 @@ const getOrders = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const offset = (page - 1) * limit;
+    const searchQuery = req.query.searchTerm || "";
 
     const [[{ totalRecords }]] = await db.query(
-      "SELECT COUNT(*) as totalRecords FROM orders"
+      "SELECT COUNT(*) as totalRecords FROM orders " +
+        "JOIN customers ON orders.customer_id = customers.customer_id " +
+        "JOIN stores ON orders.store_id = stores.store_id " +
+        "WHERE orders.order_id LIKE ? OR customers.first_name LIKE ? OR customers.last_name LIKE ? OR stores.store_name LIKE ?",
+      [
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+      ]
     );
 
     if (totalRecords === 0) {
-      return res.status(404).json({ error: "No orders found." });
+      return res.status(200).json({
+        data: [],
+        pagination: {
+          totalRecords: 0,
+          totalPages: 0,
+          currentPage: page,
+          limit,
+        },
+      });
     }
 
     const [orders] = await db.query(
-      `SELECT * FROM orders ORDER BY added_on DESC LIMIT ? OFFSET ?`,
-      [limit, offset]
+      `SELECT orders.*, customers.first_name, customers.last_name, stores.store_name
+       FROM orders
+       JOIN customers ON orders.customer_id = customers.customer_id
+       JOIN stores ON orders.store_id = stores.store_id
+       WHERE orders.order_id LIKE ? OR customers.first_name LIKE ? OR customers.last_name LIKE ? OR stores.store_name LIKE ?
+       ORDER BY orders.added_on DESC LIMIT ? OFFSET ?`,
+      [
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
     );
 
     if (!orders.length) {
@@ -35,13 +65,17 @@ const getOrders = async (req, res) => {
           [order.store_id]
         );
 
+        const [orderItemsCount] = await db.query(
+          "SELECT COUNT(*) as itemsCount FROM order_items WHERE order_id = ?",
+          [order.order_id]
+        );
+
+        order.order_items_count = orderItemsCount[0]?.itemsCount;
         order.customer = customer || {};
         order.store = store || {};
-
         return order;
       })
     );
-
     const totalPages = Math.ceil(totalRecords / limit);
 
     res.status(200).json({
@@ -130,12 +164,23 @@ const getOrderById = async (req, res) => {
 
 const getOrdersByUserId = async (req, res) => {
   const userId = req.params.userId;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 20;
+  const offset = (page - 1) * limit;
+  const searchQuery = req.query.searchTerm || "";
 
   try {
     const [user] = await db.query(
       "SELECT store_id FROM users WHERE user_id = ?",
       [userId]
     );
+    if (!user.length) {
+      return res.status(200).json({
+        data: [],
+        message: "User not found.",
+        pagination: null,
+      });
+    }
 
     if (!user.length) {
       return res.status(404).json({ error: "User not found." });
@@ -143,9 +188,50 @@ const getOrdersByUserId = async (req, res) => {
 
     const storeId = user[0].store_id;
 
-    const [orders] = await db.query("SELECT * FROM orders WHERE store_id = ?", [
-      storeId,
-    ]);
+    const [[{ totalRecords }]] = await db.query(
+      "SELECT COUNT(*) as totalRecords FROM orders o " +
+        "JOIN customers c ON o.customer_id = c.customer_id " +
+        "JOIN stores s ON o.store_id = s.store_id " +
+        "WHERE o.store_id = ? AND (o.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR s.store_name LIKE ?)",
+      [
+        storeId,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+      ]
+    );
+
+    if (totalRecords === 0) {
+      return res.status(200).json({
+        data: [],
+        message: "No orders found for this store.",
+        pagination: {
+          totalRecords: 0,
+          totalPages: 0,
+          currentPage: page,
+          limit,
+        },
+      });
+    }
+
+    const [orders] = await db.query(
+      `SELECT o.*, c.first_name, c.last_name, s.store_name
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.customer_id
+       JOIN stores s ON o.store_id = s.store_id
+       WHERE o.store_id = ? AND (o.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR s.store_name LIKE ?)
+       ORDER BY o.added_on DESC LIMIT ? OFFSET ?`,
+      [
+        storeId,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        `%${searchQuery}%`,
+        limit,
+        offset,
+      ]
+    );
 
     if (!orders.length) {
       return res.status(404).json({ error: "No orders found for this store." });
@@ -170,7 +256,17 @@ const getOrdersByUserId = async (req, res) => {
       })
     );
 
-    res.status(200).json(ordersWithCustomerInfo);
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.status(200).json({
+      data: ordersWithCustomerInfo,
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+      },
+    });
   } catch (error) {
     console.error("Error fetching orders by user ID:", error);
 

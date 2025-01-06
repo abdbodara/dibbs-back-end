@@ -20,14 +20,18 @@ const authMiddleware = (requiredRoles) => (req, res, next) => {
         return res.status(401).json({ message: "Invalid token." });
       }
 
-      req.user = decoded; 
+      req.user = decoded;
       console.log("Token decoded:", req.user);
 
       if (Array.isArray(requiredRoles)) {
         if (!requiredRoles.includes(req.user.role)) {
-          console.log(`Access denied. Required one of these roles: ${requiredRoles}`);
+          console.log(
+            `Access denied. Required one of these roles: ${requiredRoles}`
+          );
           return res.status(403).json({
-            message: `Access denied. This action requires one of these roles: ${requiredRoles.join(', ')}`,
+            message: `Access denied. This action requires one of these roles: ${requiredRoles.join(
+              ", "
+            )}`,
           });
         }
       } else {

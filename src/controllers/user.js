@@ -4,18 +4,71 @@ const nodemailer = require("nodemailer");
 require("dotenv").config();
 const bcrypt = require("bcrypt");
 
-const login = async (req, res) => {
+const register = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { user_name, email, pwd, confirmPassword, store_name } = req.body;
 
-    if (!email || !password || !role) {
+    if (!user_name || !email || !pwd || !confirmPassword || !store_name) {
       return res.status(400).json({
-        message: "Email, password, and role are required.",
+        message: "All field are required.",
+      });
+    }
+    if (pwd !== confirmPassword) {
+      return res.status(401).json({
+        message: "Password are not match",
       });
     }
 
-    const query = "SELECT * FROM users WHERE email = ? AND user_role = ?";
-    const [results] = await db.query(query, [email, role]);
+    const [existingUser] = await db.query(
+      "SELECT * FROM users WHERE email = ?",
+      [email]
+    );
+    if (existingUser.length > 0) {
+      return res.status(409).json({
+        message: "Email is already registered.",
+      });
+    }
+
+    const [result] = await db.query(
+      `INSERT INTO users (user_name, email, pwd,store_id, added_on) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [user_name, email, pwd, 0, new Date()]
+    );
+
+    const [storeResult] = await db.query(
+      `INSERT INTO stores (user_id, store_name, added_on)
+       VALUES (?, ?, ?)`,
+      [result.insertId, store_name, new Date()]
+    );
+
+    await db.query(`UPDATE users SET store_id = ? WHERE user_id = ?`, [
+      storeResult.insertId,
+      result.insertId,
+    ]);
+
+    res.status(201).json({
+      message: "User registered successfully.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password are required.",
+      });
+    }
+
+    const query = "SELECT * FROM users WHERE email = ?";
+    const [results] = await db.query(query, [email]);
 
     if (results.length === 0) {
       return res.status(401).json({
@@ -60,6 +113,120 @@ const login = async (req, res) => {
       token,
     });
   } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const updateStoreProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      user_name,
+      email,
+      pwd,
+      store_name,
+      phone,
+      website,
+      address,
+      start_time,
+      end_time,
+      redeem_code,
+      coupon_code,
+      coupon_amount,
+    } = req.body;
+    console.log(req.body, "opopo");
+    const { profileImage, storeLogo } = req.files;
+    let userUpdateFields;
+    let storeUpdateFields;
+
+    if (!userId) {
+      return res.status(400).json({
+        message: "User ID is required.",
+      });
+    }
+
+    userUpdateFields = {
+      user_name,
+      email,
+      pwd,
+    };
+
+    if (profileImage && profileImage.length > 0) {
+      userUpdateFields.image = profileImage[0].path;
+    }
+    const userUpdateQuery = Object.keys(userUpdateFields)
+      .filter((key) => userUpdateFields[key] !== undefined)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    console.log("🚀 ~ updateStoreProfile ~ userUpdateQuery:", userUpdateQuery);
+
+    const userUpdateValues = Object.keys(userUpdateFields)
+      .filter((key) => userUpdateFields[key] !== undefined)
+      .map((key) => userUpdateFields[key]);
+    console.log(
+      "🚀 ~ updateStoreProfile ~ userUpdateValues:",
+      userUpdateValues
+    );
+
+    if (userUpdateQuery) {
+      await db.query(`UPDATE users SET ${userUpdateQuery} WHERE user_id = ?`, [
+        ...userUpdateValues,
+        // new Date(),
+        userId,
+      ]);
+    }
+
+    storeUpdateFields = {
+      store_name,
+      phone,
+      website,
+      address,
+      start_time,
+      end_time,
+      redeem_code,
+      coupon_code,
+      coupon_amount,
+    };
+
+    if (storeLogo && storeLogo.length > 0) {
+      storeUpdateFields.image = storeLogo[0].path;
+    }
+    const storeUpdateQuery = Object.keys(storeUpdateFields)
+      .filter((key) => storeUpdateFields[key] !== undefined)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+
+    const storeUpdateValues = Object.keys(storeUpdateFields)
+      .filter((key) => storeUpdateFields[key] !== undefined)
+      .map((key) => storeUpdateFields[key]);
+
+    if (storeUpdateQuery) {
+      await db.query(
+        `UPDATE stores SET ${storeUpdateQuery}, updated_on = ? WHERE user_id = ?`,
+        [...storeUpdateValues, new Date(), userId]
+      );
+    }
+    const updatedUserData = await db.query(
+      "SELECT * FROM users WHERE user_id = ?",
+      [userId]
+    );
+    const updatedStoreData = await db.query(
+      "SELECT * FROM stores WHERE user_id = ?",
+      [userId]
+    );
+
+    res.status(200).json({
+      message: "Profile updated successfully.",
+      data: {
+        user: updatedUserData[0],
+        store: updatedStoreData[0],
+      },
+    });
+  } catch (error) {
+    console.log("🚀 ~ updateStoreProfile ~ error:", error);
     res.status(500).json({
       message: "Server error",
       error: error.message,
@@ -115,10 +282,10 @@ const forgotPassword = async (req, res) => {
       "SELECT user_id, email, user_name FROM users WHERE email = ? AND status = ?",
       [email, "active"]
     );
-
     if (rows.length === 0) {
-      retData.message = "Email not found or user is inactive.";
-      return res.status(404).json(retData);
+      return res
+        .status(404)
+        .json({ message: "Email not found or user is inactive." });
     }
 
     const user = rows[0];
@@ -155,6 +322,10 @@ const resetPassword = async (req, res) => {
   const { password } = req.body;
   const { token } = req.query;
 
+  if (!password) {
+    return res.status(400).json({ message: "Password is required." });
+  }
+
   try {
     const decodedEmail = Buffer.from(token, "base64").toString("utf-8");
 
@@ -166,7 +337,7 @@ const resetPassword = async (req, res) => {
     if (rows.length === 0) {
       return res
         .status(400)
-        .json({ error: "User not found or account is inactive" });
+        .json({ message: "User not found or account is inactive" });
     }
 
     const user = rows[0];
@@ -176,12 +347,12 @@ const resetPassword = async (req, res) => {
       decodedEmail,
     ]);
 
-    res.status(200).json({ success: "Password successfully updated" });
+    res.status(200).json({ messege: "Password successfully updated" });
   } catch (error) {
     console.error(error);
     res
       .status(500)
-      .json({ error: "Something went wrong. Please try again later." });
+      .json({ message: "Something went wrong. Please try again later." });
   }
 };
 
@@ -190,7 +361,7 @@ const getProfile = async (req, res) => {
     const { id } = req.user;
     console.log(id, "id");
     const [user] = await db.query(
-      "SELECT user_id, fullName, email, user_role, referral_credits, support_email, signup_credits, signup_credits_expiry, product_admin_share, send_signup_email, image, coupon_code, coupon_amount FROM users WHERE user_id = ?",
+      "SELECT user_id, user_name, email, user_role, refferal_credits, image FROM users WHERE user_id = ?",
       [id]
     );
 
@@ -200,18 +371,72 @@ const getProfile = async (req, res) => {
 
     res.json({
       user_id: user[0].user_id,
-      fullName: user[0].fullName,
+      fullName: user[0].user_name,
       email: user[0].email,
       user_role: user[0].user_role,
       referral_credits: user[0].referral_credits,
-      support_email: user[0].support_email,
-      signup_credits: user[0].signup_credits,
-      signup_credits_expiry: user[0].signup_credits_expiry,
-      product_admin_share: user[0].product_admin_share,
-      send_signup_email: user[0].send_signup_email,
       profile_image: user[0].image,
-      coupon_code: user[0].coupon_code,
-      coupon_amount: user[0].coupon_amount,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const getStoreProfile = async (req, res) => {
+  try {
+    const { id } = req.user;
+
+    const [result] = await db.query(
+      `SELECT 
+        s.store_id, 
+        s.store_name, 
+        s.phone, 
+        s.website, 
+        s.address, 
+        s.start_time, 
+        s.end_time, 
+        s.redeem_code, 
+        s.coupen_code, 
+        s.coupen_amount, 
+       s.image AS store_logo, 
+        u.user_name, 
+        u.email, 
+        u.pwd,
+        u.image AS profile_image 
+      FROM stores AS s
+      JOIN users AS u ON s.user_id = u.user_id
+      WHERE s.user_id = ?`,
+      [id]
+    );
+
+    if (!result.length) {
+      return res.status(404).json({ message: "Store not found" });
+    }
+
+    const store = result[0];
+    console.log("🚀 ~ getStoreProfile ~ store:", store);
+
+    res.json({
+      store_id: store.store_id,
+      store_name: store.store_name,
+      phone: store.phone,
+      website: store.website,
+      address: store.address,
+      start_time: store.start_time,
+      end_time: store.end_time,
+      redeem_code: store.redeem_code,
+      coupon_code: store.coupen_code,
+      coupon_amount: store.coupen_amount,
+      store_logo: store.store_logo,
+      user: {
+        user_name: store.user_name,
+        email: store.email,
+        profile_image: store.profile_image,
+        pwd: store.pwd,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -225,8 +450,8 @@ const updateUserProfile = async (req, res) => {
   try {
     const { id } = req.user;
     const {
-      fullName,
-      referralCredits,
+      user_name,
+      refferal_credits,
       supportEmail,
       signupCredits,
       signupCreditsExpiry,
@@ -243,7 +468,6 @@ const updateUserProfile = async (req, res) => {
     const [user] = await db.query("SELECT * FROM users WHERE user_id = ?", [
       id,
     ]);
-    console.log("🚀 ~ updateUserProfile ~ user:", user);
     if (!user.length) {
       return res.status(404).json({ message: "User not found." });
     }
@@ -251,55 +475,55 @@ const updateUserProfile = async (req, res) => {
     const updateFields = [];
     const updateData = [];
 
-    if (fullName) {
-      updateFields.push("fullName = ?");
-      updateData.push(fullName);
+    if (user_name) {
+      updateFields.push("user_name = ?");
+      updateData.push(user_name);
     }
 
-    if (referralCredits !== undefined) {
-      updateFields.push("referral_credits = ?");
-      updateData.push(referralCredits);
+    if (refferal_credits !== undefined) {
+      updateFields.push("refferal_credits = ?");
+      updateData.push(refferal_credits);
     }
 
-    if (supportEmail !== undefined) {
-      updateFields.push("support_email = ?");
-      updateData.push(supportEmail);
-    }
+    // if (supportEmail !== undefined) {
+    //   updateFields.push("support_email = ?");
+    //   updateData.push(supportEmail);
+    // }
 
-    if (signupCredits !== undefined) {
-      updateFields.push("signup_credits = ?");
-      updateData.push(signupCredits);
-    }
+    // if (signupCredits !== undefined) {
+    //   updateFields.push("signup_credits = ?");
+    //   updateData.push(signupCredits);
+    // }
 
-    if (signupCreditsExpiry !== undefined) {
-      updateFields.push("signup_credits_expiry = ?");
-      updateData.push(signupCreditsExpiry);
-    }
+    // if (signupCreditsExpiry !== undefined) {
+    //   updateFields.push("signup_credits_expiry = ?");
+    //   updateData.push(signupCreditsExpiry);
+    // }
 
-    if (productAdminShare !== undefined) {
-      updateFields.push("product_admin_share = ?");
-      updateData.push(productAdminShare);
-    }
+    // if (productAdminShare !== undefined) {
+    //   updateFields.push("product_admin_share = ?");
+    //   updateData.push(productAdminShare);
+    // }
 
-    if (sendSignupEmail !== undefined) {
-      updateFields.push("send_signup_email = ?");
-      updateData.push(sendSignupEmail);
-    }
+    // if (sendSignupEmail !== undefined) {
+    //   updateFields.push("send_signup_email = ?");
+    //   updateData.push(sendSignupEmail);
+    // }
 
-    if (couponCode !== undefined) {
-      updateFields.push("coupon_code = ?");
-      updateData.push(couponCode);
-    }
+    // if (couponCode !== undefined) {
+    //   updateFields.push("coupon_code = ?");
+    //   updateData.push(couponCode);
+    // }
 
-    if (couponAmount !== undefined) {
-      updateFields.push("coupon_amount = ?");
-      updateData.push(couponAmount);
-    }
+    // if (couponAmount !== undefined) {
+    //   updateFields.push("coupon_amount = ?");
+    //   updateData.push(couponAmount);
+    // }
 
-    if (profileImage) {
-      updateFields.push("image = ?");
-      updateData.push(profileImage);
-    }
+    // if (profileImage) {
+    //   updateFields.push("image = ?");
+    //   updateData.push(profileImage);
+    // }
 
     if (newPassword) {
       const hashedPassword = newPassword;
@@ -314,12 +538,6 @@ const updateUserProfile = async (req, res) => {
       )} WHERE user_id = ?`;
       await db.query(updateQuery, updateData);
     }
-
-    console.log(
-      "🚀 ~ updateUserProfile ~ updateFields:",
-      updateFields,
-      updateData
-    );
 
     const appConfigFields = {
       support_email: supportEmail,
@@ -342,7 +560,6 @@ const updateUserProfile = async (req, res) => {
 };
 
 const updateAppConfig = async (appConfigFields, userId) => {
-  console.log("🚀 ~ updateAppConfig ~ userId:", userId);
   for (const [fieldName, fieldValue] of Object.entries(appConfigFields)) {
     if (fieldValue !== undefined) {
       const [existingField] = await db.query(
@@ -351,7 +568,6 @@ const updateAppConfig = async (appConfigFields, userId) => {
       );
 
       if (existingField.length > 0) {
-        console.log("🚀 ~ updateAppConfig ~ existingField:", existingField);
         await db.query(
           `UPDATE app_config 
            SET field_value = ?, updated_on = NOW(), updated_by = ? 
@@ -370,10 +586,13 @@ const updateAppConfig = async (appConfigFields, userId) => {
 };
 
 module.exports = {
+  register,
   logout,
   updateUserProfile,
   forgotPassword,
   login,
+  updateStoreProfile,
   resetPassword,
   getProfile,
+  getStoreProfile,
 };

@@ -10,7 +10,7 @@ const authMiddleware = require("../middleware/auth");
 const router = express.Router();
 
 router.get("/", authMiddleware("admin"), getOrders);
-router.put("/cancel/:orderId", authMiddleware("admin"), cancelOrder);
+router.put("/cancel/:orderId", authMiddleware(["admin", "owner"]), cancelOrder);
 router.get("/:orderId", authMiddleware("admin"), getOrderById);
 router.get("/user/:userId", authMiddleware("owner"), getOrdersByUserId);
 
