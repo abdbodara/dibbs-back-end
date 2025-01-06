@@ -2,14 +2,12 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const multer = require("multer");
 require("dotenv").config();
+const path = require("path");
 const cors = require("cors");
 
 const { testConnection } = require("./src/db/config");
-
 var corsOptions = {
   origin: "*",
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 200,
 };
 const app = express();
@@ -28,6 +26,7 @@ const dashboardRoutes = require("./src/routes/dashboard");
 const faqsRoutes = require("./src/routes/faqs");
 const pushNotificationRoutes = require("./src/routes/pushAlert");
 const supportQueriesRoute = require("./src/routes/support");
+const discountCouponRoutes = require("./src/routes/coupon");
 
 app.use("/api/store", storeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -39,6 +38,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/faqs", faqsRoutes);
 app.use("/api/pushNotification", pushNotificationRoutes);
 app.use("/api/support", supportQueriesRoute);
+app.use("/api/coupon", discountCouponRoutes);
 
 const PORT = process.env.PORT || 5000;
 
