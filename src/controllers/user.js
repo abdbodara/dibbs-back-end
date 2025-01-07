@@ -288,7 +288,7 @@ const forgotPassword = async (req, res) => {
 
     const user = rows[0];
     const resetToken = Buffer.from(email).toString("base64");
-    const resetLink = `${process.env.SITE_URL}resetPassword?token=${resetToken}`;
+    const resetLink = `${process.env.SITE_URL}/resetPassword?token=${resetToken}`;
 
     const mailOptions = {
       from: `"DIBBS" <${process.env.FROM_EMAIL}>`,
