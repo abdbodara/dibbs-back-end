@@ -137,7 +137,6 @@ const updateStoreProfile = async (req, res) => {
       coupon_code,
       coupon_amount,
     } = req.body;
-    console.log(req.body, "opopo");
     const { profileImage, storeLogo } = req.files;
     let userUpdateFields;
     let storeUpdateFields;
@@ -174,7 +173,6 @@ const updateStoreProfile = async (req, res) => {
     if (userUpdateQuery) {
       await db.query(`UPDATE users SET ${userUpdateQuery} WHERE user_id = ?`, [
         ...userUpdateValues,
-        // new Date(),
         userId,
       ]);
     }
@@ -359,9 +357,18 @@ const resetPassword = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const { id } = req.user;
-    console.log(id, "id");
+
     const [user] = await db.query(
-      "SELECT user_id, user_name, email, user_role, refferal_credits, image FROM users WHERE user_id = ?",
+      `SELECT 
+        user_id, 
+        user_name, 
+        pwd,
+        email, 
+        user_role, 
+        refferal_credits, 
+        image 
+      FROM users 
+      WHERE user_id = ?`,
       [id]
     );
 
@@ -369,13 +376,34 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.json({
+    const [config] = await db.query(
+      `SELECT field_name, field_value FROM app_config`
+    );
+    const configObj = config.reduce((acc, { field_name, field_value }) => {
+      acc[field_name] = field_value;
+      return acc;
+    }, {});
+
+    const userProfile = {
       user_id: user[0].user_id,
       fullName: user[0].user_name,
+      pwd: user[0].pwd,
       email: user[0].email,
       user_role: user[0].user_role,
-      referral_credits: user[0].referral_credits,
+      referral_credits: user[0].refferal_credits,
       profile_image: user[0].image,
+      coupen_code: configObj.coupen_code,
+      coupen_amount: configObj.coupen_amount,
+      support_email: configObj.support_email || null,
+      signup_credits: configObj.signup_credits || null,
+      signup_credits_expiry: configObj.signup_credits_expiry || null,
+      product_admin_share: configObj.product_admin_share || null,
+      send_signup_email: configObj.send_signup_email || null,
+    };
+
+    res.json({
+      message: "Profile updated successfully",
+      userProfile,
     });
   } catch (error) {
     res.status(500).json({
@@ -447,23 +475,24 @@ const getStoreProfile = async (req, res) => {
 };
 
 const updateUserProfile = async (req, res) => {
+  console.log("🚀 ~ updateUserProfile ~ req:", req);
   try {
     const { id } = req.user;
     const {
       user_name,
+      email,
       refferal_credits,
       supportEmail,
       signupCredits,
       signupCreditsExpiry,
       productAdminShare,
       sendSignupEmail,
-      newPassword,
       couponCode,
       couponAmount,
+      pwd,
     } = req.body;
-
-    const profileImage = req.body.profileImage || null;
-    console.log(profileImage, "profileImage");
+    const profileImage = req.file;
+    console.log("🚀 ~ updateUserProfile ~ profileImage:", profileImage);
 
     const [user] = await db.query("SELECT * FROM users WHERE user_id = ?", [
       id,
@@ -480,55 +509,24 @@ const updateUserProfile = async (req, res) => {
       updateData.push(user_name);
     }
 
+    if (email) {
+      updateFields.push("email = ?");
+      updateData.push(email);
+    }
+
+    if (profileImage) {
+      updateFields.push("image = ?");
+      updateData.push(profileImage.path);
+    }
+
     if (refferal_credits !== undefined) {
       updateFields.push("refferal_credits = ?");
       updateData.push(refferal_credits);
     }
 
-    // if (supportEmail !== undefined) {
-    //   updateFields.push("support_email = ?");
-    //   updateData.push(supportEmail);
-    // }
-
-    // if (signupCredits !== undefined) {
-    //   updateFields.push("signup_credits = ?");
-    //   updateData.push(signupCredits);
-    // }
-
-    // if (signupCreditsExpiry !== undefined) {
-    //   updateFields.push("signup_credits_expiry = ?");
-    //   updateData.push(signupCreditsExpiry);
-    // }
-
-    // if (productAdminShare !== undefined) {
-    //   updateFields.push("product_admin_share = ?");
-    //   updateData.push(productAdminShare);
-    // }
-
-    // if (sendSignupEmail !== undefined) {
-    //   updateFields.push("send_signup_email = ?");
-    //   updateData.push(sendSignupEmail);
-    // }
-
-    // if (couponCode !== undefined) {
-    //   updateFields.push("coupon_code = ?");
-    //   updateData.push(couponCode);
-    // }
-
-    // if (couponAmount !== undefined) {
-    //   updateFields.push("coupon_amount = ?");
-    //   updateData.push(couponAmount);
-    // }
-
-    // if (profileImage) {
-    //   updateFields.push("image = ?");
-    //   updateData.push(profileImage);
-    // }
-
-    if (newPassword) {
-      const hashedPassword = newPassword;
+    if (pwd) {
       updateFields.push("pwd = ?");
-      updateData.push(hashedPassword);
+      updateData.push(pwd);
     }
 
     if (updateFields.length > 0) {
@@ -546,6 +544,8 @@ const updateUserProfile = async (req, res) => {
       product_admin_share: productAdminShare,
       send_signup_email: sendSignupEmail,
       send_signup_email: sendSignupEmail,
+      coupen_code: couponCode,
+      coupen_amount: couponAmount,
     };
 
     await updateAppConfig(appConfigFields, id);

@@ -707,6 +707,7 @@ const addDeal = async (req, res) => {
   }
 };
 
+
 const getDealsByUserId = async (req, res) => {
   const { userId } = req.params;
   const page = parseInt(req.query.page) || 1;
@@ -733,9 +734,17 @@ const getDealsByUserId = async (req, res) => {
       `SELECT COUNT(*) as totalRecords 
        FROM products 
        WHERE store_id = ? AND status IN (?, ?) 
-       AND (product_name LIKE ? OR description LIKE ?)`,
-      [storeId, "active", "inactive", `%${searchTerm}%`, `%${searchTerm}%`]
+       AND (CAST(product_id AS CHAR) LIKE ? OR product_name LIKE ? OR description LIKE ?)`,
+      [
+        storeId,
+        "active",
+        "inactive",
+        `%${searchTerm}%`,
+        `%${searchTerm}%`,
+        `%${searchTerm}%`,
+      ]
     );
+    console.log("🚀 ~ getDealsByUserId ~ totalRecords:", totalRecords);
 
     if (totalRecords === 0) {
       return res.status(200).json({
@@ -762,13 +771,14 @@ const getDealsByUserId = async (req, res) => {
        ) pv ON p.product_id = pv.product_id
        LEFT JOIN stores s ON p.store_id = s.store_id
        WHERE p.store_id = ? AND p.status IN (?, ?) 
-       AND (p.product_name LIKE ? OR p.description LIKE ?) 
+       AND (p.product_id LIKE ? OR p.product_name LIKE ? OR p.description LIKE ?) 
        ORDER BY p.added_on DESC 
        LIMIT ? OFFSET ?`,
       [
         storeId,
         "active",
         "inactive",
+        `%${searchTerm}%`,
         `%${searchTerm}%`,
         `%${searchTerm}%`,
         limit,
