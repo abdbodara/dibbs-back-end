@@ -132,8 +132,47 @@ const updateReferralCredits = async (req, res) => {
   }
 };
 
+const deleteCustomer = async (req, res) => {
+  try {
+    const { customer_id } = req.params;
+
+    if (!customer_id) {
+      return res.status(400).json({ error: "Customer ID is required." });
+    }
+
+    const [existingCustomer] = await db.query(
+      "SELECT * FROM customers WHERE customer_id = ?",
+      [customer_id]
+    );
+
+    if (existingCustomer.length === 0) {
+      return res.status(404).json({ error: "Customer not found." });
+    }
+
+    const [result] = await db.query(
+      "DELETE FROM customers WHERE customer_id = ?",
+      [customer_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Failed to delete customer." });
+    }
+
+    res.status(200).json({
+      message: "Customer deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Error deleting customer:", error);
+    res.status(500).json({
+      error: "An error occurred while deleting the customer.",
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   getCustomersList,
   updateCustomerStatus,
   updateReferralCredits,
+  deleteCustomer
 };

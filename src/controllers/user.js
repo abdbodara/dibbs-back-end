@@ -547,6 +547,7 @@ const updateUserProfile = async (req, res) => {
       coupen_code: couponCode,
       coupen_amount: couponAmount,
     };
+    console.log("🚀 ~ updateUserProfile ~ appConfigFields:", appConfigFields);
 
     await updateAppConfig(appConfigFields, id);
 

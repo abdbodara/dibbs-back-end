@@ -531,7 +531,6 @@ const addDeal = async (req, res) => {
 
     const user = req.user;
     const image = req.files["image"] || [];
-    console.log("🚀 ~ addDeal ~ image:", image);
     const endDate = new Date(end_date_time).toISOString().slice(0, 10);
     const endTime =
       end_time || new Date(end_date_time).toISOString().slice(11, 19);
@@ -571,6 +570,8 @@ const addDeal = async (req, res) => {
     // }
 
     const added_on = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const appointmentValue =
+      appointment === "Y" ? "Y" : appointment === "false" ? "N" : "";
 
     const query = `
           INSERT INTO products (
@@ -582,13 +583,13 @@ const addDeal = async (req, res) => {
     const params = [
       product_name,
       description,
-      category,
+      category || null,
       endDate,
       endTime,
       return_policy || null,
       purchase_valid || null,
       per_person_purchase || null,
-      appointment || null,
+      appointmentValue,
       status,
       defaultPrice,
       defaultDiscount,
@@ -621,10 +622,8 @@ const addDeal = async (req, res) => {
     };
 
     const variants = parseVariants(req.body);
-    console.log("Parsed Variants:", variants);
 
     if (newDeal[0]?.product_id) {
-      console.log("🚀 ~ addDeal ~ newDeal:", newDeal);
       try {
         if (Array.isArray(variants) && variants.length > 0) {
           for (const variant of variants) {
@@ -637,7 +636,9 @@ const addDeal = async (req, res) => {
               newDeal[0].product_id,
               variant.variant_name,
               variant.product_price,
-              variant.productVariantDiscount,
+              variant.productVariantDiscount
+                ? variant.productVariantDiscount
+                : "0.00",
               added_on,
               user.id,
             ];
@@ -646,12 +647,10 @@ const addDeal = async (req, res) => {
           }
         }
       } catch (error) {
-        console.log("🚀 ~ addDeal ~ error:", error);
         console.error("Variant names are missing or invalid.");
       }
 
-      if (uploadedImages.length > 0) {
-        console.log("🚀 ~ addDeal ~ newDealId:", newDealId);
+      if (uploadedImages && uploadedImages.length > 0) {
         const [existingImages] = await db.query(
           "SELECT * FROM products_images WHERE product_id = ? AND status = 'active'",
           [newDealId]
@@ -662,7 +661,6 @@ const addDeal = async (req, res) => {
         const imagesToAdd = uploadedImages.filter(
           (img) => !existingImagePath.includes(img.filename)
         );
-        console.log("🚀 ~ addDeal ~ imagesToAdd:", imagesToAdd);
 
         const imagesToDelete = existingImages.filter(
           (img) =>
@@ -706,7 +704,6 @@ const addDeal = async (req, res) => {
       .json({ message: "An error occurred while adding the deal." });
   }
 };
-
 
 const getDealsByUserId = async (req, res) => {
   const { userId } = req.params;
