@@ -49,6 +49,20 @@ const getCounts = async (req, res) => {
 const getUserCounts = async (req, res) => {
   try {
     const { userId } = req.params;
+
+    const storeQuery = `
+          SELECT store_id 
+          FROM stores
+          WHERE user_id = ?;
+        `;
+    const [storeResult] = await db.query(storeQuery, [userId]);
+
+    if (storeResult.length === 0) {
+      return res.status(404).json({ message: "Store not found for this user" });
+    }
+    ``
+    const storeId = storeResult[0].store_id;
+
     const dealsQuery = `
           SELECT 
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS activeDeals,
@@ -58,26 +72,26 @@ const getUserCounts = async (req, res) => {
         `;
     const [deals] = await db.query(dealsQuery, [userId]);
 
-    const totalDeals = deals[0].activeDeals;
+    const totalDeals = deals[0].activeDeals || 0;
 
     const paidOrdersQuery = `
           SELECT COUNT(*) AS totalPaidOrders 
           FROM orders 
-          WHERE customer_id = ? AND payment_status = 'paid';
+          WHERE store_id = ? AND payment_status = 'paid';
         `;
-    const [paidOrders] = await db.query(paidOrdersQuery, [userId]);
+    const [paidOrders] = await db.query(paidOrdersQuery, [storeId]);
 
     const pendingOrdersQuery = `
-          SELECT COUNT(*) AS totalPendingOrders 
+          SELECT COUNT(*) AS totalPendingOrders
           FROM orders 
-          WHERE customer_id = ? AND payment_status = 'pending';
+          WHERE store_id = ? AND payment_status = 'pending';
         `;
-    const [pendingOrders] = await db.query(pendingOrdersQuery, [userId]);
+    const [pendingOrders] = await db.query(pendingOrdersQuery, [storeId]);
 
     res.json({
       totalDeals,
-      totalPaidOrders: paidOrders[0].totalPaidOrders,
-      totalPendingOrders: pendingOrders[0].totalPendingOrders,
+      totalPaidOrders: paidOrders[0].totalPaidOrders || 0,
+      totalPendingOrders: pendingOrders[0].totalPendingOrders || 0,
     });
   } catch (error) {
     console.error("Error fetching user counts:", error.message);
