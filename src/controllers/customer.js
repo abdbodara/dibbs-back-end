@@ -86,18 +86,32 @@ const updateCustomerStatus = async (req, res) => {
 const updateReferralCredits = async (req, res) => {
   try {
     const { customer_id } = req.params;
-    const { refferal_credits } = req.body;
+    const { refferal_credits, credit_balance } = req.body;
 
-    if (!customer_id || refferal_credits === undefined) {
-      return res
-        .status(400)
-        .json({ error: "Customer ID and referral credits are required." });
+    if (
+      !customer_id ||
+      (refferal_credits === undefined && credit_balance === undefined)
+    ) {
+      return res.status(400).json({
+        error:
+          "Customer ID and at least one of referral credits or credit balance are required.",
+      });
     }
 
-    if (isNaN(refferal_credits) || refferal_credits < 0) {
-      return res.status(400).json({
-        error: "Referral credits must be a valid non-negative number.",
-      });
+    if (refferal_credits !== undefined) {
+      if (isNaN(refferal_credits) || refferal_credits < 0) {
+        return res.status(400).json({
+          error: "Referral credits must be a valid non-negative number.",
+        });
+      }
+    }
+
+    if (credit_balance !== undefined) {
+      if (isNaN(credit_balance) || credit_balance < 0) {
+        return res.status(400).json({
+          error: "Credit balance must be a valid non-negative number.",
+        });
+      }
     }
 
     const [existingCustomer] = await db.query(
@@ -109,24 +123,37 @@ const updateReferralCredits = async (req, res) => {
       return res.status(404).json({ error: "Customer not found." });
     }
 
-    const [result] = await db.query(
-      "UPDATE customers SET refferal_credits = ? WHERE customer_id = ?",
-      [refferal_credits, customer_id]
-    );
+    let updateQuery = "UPDATE customers SET ";
+    let updateValues = [];
+
+    if (refferal_credits !== undefined) {
+      updateQuery += "refferal_credits = ?, ";
+      updateValues.push(refferal_credits);
+    }
+
+    if (credit_balance !== undefined) {
+      updateQuery += "credits = ?, ";
+      updateValues.push(credit_balance);
+    }
+
+    updateQuery = updateQuery.slice(0, -2);
+
+    updateQuery += " WHERE customer_id = ?";
+    updateValues.push(customer_id);
+
+    const [result] = await db.query(updateQuery, updateValues);
 
     if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ error: "Failed to update referral credits." });
+      return res.status(404).json({ error: "Failed to update credits." });
     }
 
     res.status(200).json({
-      message: "Referral credits updated successfully.",
+      message: "Customer credits updated successfully.",
     });
   } catch (error) {
-    console.error("Error updating referral credits:", error);
+    console.error("Error updating credits:", error);
     res.status(500).json({
-      error: "An error occurred while updating referral credits.",
+      error: "An error occurred while updating credits.",
       details: error.message,
     });
   }
@@ -174,5 +201,5 @@ module.exports = {
   getCustomersList,
   updateCustomerStatus,
   updateReferralCredits,
-  deleteCustomer
+  deleteCustomer,
 };

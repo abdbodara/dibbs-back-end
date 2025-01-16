@@ -136,6 +136,7 @@ const updateStoreProfile = async (req, res) => {
       redeem_code,
       coupon_code,
       coupon_amount,
+      businessHours,
     } = req.body;
     const { profileImage, storeLogo } = req.files;
     let userUpdateFields;
@@ -165,10 +166,6 @@ const updateStoreProfile = async (req, res) => {
     const userUpdateValues = Object.keys(userUpdateFields)
       .filter((key) => userUpdateFields[key] !== undefined)
       .map((key) => userUpdateFields[key]);
-    console.log(
-      "🚀 ~ updateStoreProfile ~ userUpdateValues:",
-      userUpdateValues
-    );
 
     if (userUpdateQuery) {
       await db.query(`UPDATE users SET ${userUpdateQuery} WHERE user_id = ?`, [
@@ -182,8 +179,6 @@ const updateStoreProfile = async (req, res) => {
       phone,
       website,
       address,
-      start_time,
-      end_time,
       redeem_code,
       coupon_code,
       coupon_amount,
@@ -207,6 +202,67 @@ const updateStoreProfile = async (req, res) => {
         [...storeUpdateValues, new Date(), userId]
       );
     }
+    const [storeResult] = await db.query(
+      "SELECT store_id FROM stores WHERE user_id = ?",
+      [userId]
+    );
+
+    if (storeResult.length === 0) {
+      return res.status(404).json({ message: "Store not found" });
+    }
+
+    const storeId = storeResult[0].store_id;
+    if (businessHours) {
+      const businessHoursData = JSON.parse(businessHours);
+
+      const storeTimingsQuery = `
+      INSERT INTO store_timings (
+        store_id, mon_close, mon_start, mon_end, tue_close, tue_start, tue_end,
+        wed_close, wed_start, wed_end, thur_close, thur_start, thur_end,
+        fri_close, fri_start, fri_end, sat_close, sat_start, sat_end, sun_close, sun_start, sun_end, added_on
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        mon_close = VALUES(mon_close), mon_start = VALUES(mon_start), mon_end = VALUES(mon_end),
+        tue_close = VALUES(tue_close), tue_start = VALUES(tue_start), tue_end = VALUES(tue_end),
+        wed_close = VALUES(wed_close), wed_start = VALUES(wed_start), wed_end = VALUES(wed_end),
+        thur_close = VALUES(thur_close), thur_start = VALUES(thur_start), thur_end = VALUES(thur_end),
+        fri_close = VALUES(fri_close), fri_start = VALUES(fri_start), fri_end = VALUES(fri_end),
+        sat_close = VALUES(sat_close), sat_start = VALUES(sat_start), sat_end = VALUES(sat_end),
+        sun_close = VALUES(sun_close), sun_start = VALUES(sun_start), sun_end = VALUES(sun_end),
+        added_on = VALUES(added_on)
+    `;
+
+      const currentTimestamp = new Date();
+
+      const timingsValues = [
+        storeId,
+        businessHoursData.Monday?.closed ? "Y" : "N",
+        businessHoursData.Monday?.start || null,
+        businessHoursData.Monday?.end || null,
+        businessHoursData.Tuesday?.closed ? "Y" : "N",
+        businessHoursData.Tuesday?.start || null,
+        businessHoursData.Tuesday?.end || null,
+        businessHoursData.Wednesday?.closed ? "Y" : "N",
+        businessHoursData.Wednesday?.start || null,
+        businessHoursData.Wednesday?.end || null,
+        businessHoursData.Thursday?.closed ? "Y" : "N",
+        businessHoursData.Thursday?.start || null,
+        businessHoursData.Thursday?.end || null,
+        businessHoursData.Friday?.closed ? "Y" : "N",
+        businessHoursData.Friday?.start || null,
+        businessHoursData.Friday?.end || null,
+        businessHoursData.Saturday?.closed ? "Y" : "N",
+        businessHoursData.Saturday?.start || null,
+        businessHoursData.Saturday?.end || null,
+        businessHoursData.Sunday?.closed ? "Y" : "N",
+        businessHoursData.Sunday?.start || null,
+        businessHoursData.Sunday?.end || null,
+        currentTimestamp,
+      ];
+
+      await db.query(storeTimingsQuery, timingsValues);
+    }
+
     const updatedUserData = await db.query(
       "SELECT * FROM users WHERE user_id = ?",
       [userId]
@@ -416,6 +472,7 @@ const getProfile = async (req, res) => {
 const getStoreProfile = async (req, res) => {
   try {
     const { id } = req.user;
+    console.log("🚀 ~ getStoreProfile ~ id:", id);
 
     const [result] = await db.query(
       `SELECT 
@@ -429,14 +486,22 @@ const getStoreProfile = async (req, res) => {
         s.redeem_code, 
         s.coupen_code, 
         s.coupen_amount, 
-       s.image AS store_logo, 
+        s.image AS store_logo, 
         u.user_name, 
         u.email, 
         u.pwd,
-        u.image AS profile_image 
+        u.image AS profile_image,
+        st.mon_close, st.mon_start, st.mon_end,
+        st.tue_close, st.tue_start, st.tue_end,
+        st.wed_close, st.wed_start, st.wed_end,
+        st.thur_close, st.thur_start, st.thur_end,
+        st.fri_close, st.fri_start, st.fri_end,
+        st.sat_close, st.sat_start, st.sat_end,
+        st.sun_close, st.sun_start, st.sun_end
       FROM stores AS s
       JOIN users AS u ON s.user_id = u.user_id
-      WHERE s.user_id = ?`,
+      LEFT JOIN store_timings AS st ON s.store_id = st.store_id
+      WHERE s.user_id = ? ORDER BY st.auto_id DESC LIMIT 1`,
       [id]
     );
 
@@ -445,7 +510,44 @@ const getStoreProfile = async (req, res) => {
     }
 
     const store = result[0];
-    console.log("🚀 ~ getStoreProfile ~ store:", store);
+
+    const businessHours = {
+      Monday: {
+        closed: store.mon_close === "Y",
+        start: store.mon_start,
+        end: store.mon_end,
+      },
+      Tuesday: {
+        closed: store.tue_close === "Y",
+        start: store.tue_start,
+        end: store.tue_end,
+      },
+      Wednesday: {
+        closed: store.wed_close === "Y",
+        start: store.wed_start,
+        end: store.wed_end,
+      },
+      Thursday: {
+        closed: store.thur_close === "Y",
+        start: store.thur_start,
+        end: store.thur_end,
+      },
+      Friday: {
+        closed: store.fri_close === "Y",
+        start: store.fri_start,
+        end: store.fri_end,
+      },
+      Saturday: {
+        closed: store.sat_close === "Y",
+        start: store.sat_start,
+        end: store.sat_end,
+      },
+      Sunday: {
+        closed: store.sun_close === "Y",
+        start: store.sun_start,
+        end: store.sun_end,
+      },
+    };
 
     res.json({
       store_id: store.store_id,
@@ -465,6 +567,7 @@ const getStoreProfile = async (req, res) => {
         profile_image: store.profile_image,
         pwd: store.pwd,
       },
+      business_hours: businessHours,
     });
   } catch (error) {
     res.status(500).json({
@@ -475,7 +578,6 @@ const getStoreProfile = async (req, res) => {
 };
 
 const updateUserProfile = async (req, res) => {
-  console.log("🚀 ~ updateUserProfile ~ req:", req);
   try {
     const { id } = req.user;
     const {

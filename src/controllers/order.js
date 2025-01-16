@@ -249,6 +249,11 @@ const getOrdersByUserId = async (req, res) => {
           [order.store_id]
         );
 
+        const [orderItemsCount] = await db.query(
+          "SELECT COUNT(*) as itemsCount FROM order_items WHERE order_id = ?",
+          [order.order_id]
+        );
+        order.order_items_count = orderItemsCount[0]?.itemsCount;
         order.customer = customer[0] || {};
         order.store = store[0] || {};
 
